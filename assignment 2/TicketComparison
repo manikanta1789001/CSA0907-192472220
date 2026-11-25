@@ -1,0 +1,71 @@
+
+
+import java.util.StringJoiner;
+
+public class TicketComparison {
+    interface Builder { String build(int fields); }
+
+    static String withString(int n) {
+        String s = "";
+        for (int i=0;i<n;i++) s = s + "Field" + i + " ";
+        return s;
+    }
+    static String withBuilder(int n) {
+        StringBuilder s = new StringBuilder();
+        for (int i=0;i<n;i++) s.append("Field").append(i).append(' ');
+        return s.toString();
+    }
+    static String withBuffer(int n) {
+        StringBuffer s = new StringBuffer();
+        for (int i=0;i<n;i++) s.append("Field").append(i).append(' ');
+        return s.toString();
+    }
+    static long benchmark(Builder b, int fields, int tickets, int repetitions) {
+        long checksum=0;
+        for(int r=0;r<repetitions;r++) {
+            long start=System.nanoTime();
+            for(int t=0;t<tickets;t++) checksum += b.build(fields).length();
+            long elapsed=System.nanoTime()-start;
+            if(r==repetitions-1) return elapsed;
+        }
+        return checksum;
+    }
+    static void memoryNote() {
+        Runtime rt=Runtime.getRuntime();
+        System.gc();
+        long before=rt.totalMemory()-rt.freeMemory();
+        String s=withBuilder(10000);
+        long after=rt.totalMemory()-rt.freeMemory();
+        System.out.println("Approx. used-memory change: "+(after-before)+" bytes; final length="+s.length());
+        System.out.println("Note: GC/JVM allocation makes this a rough observation, not exact object counting.");
+    }
+    public static void main(String[] args) throws Exception {
+        int[][] workloads={{5,1},{50,10000},{100,50000}};
+        Builder[] methods={TicketComparison::withString,TicketComparison::withBuilder,TicketComparison::withBuffer};
+        String[] names={"String (+)","StringBuilder","StringBuffer"};
+        for(int[] w:workloads) {
+            System.out.println("\\nTickets="+w[1]+", fields/ticket="+w[0]);
+            for(int i=0;i<methods.length;i++) {
+                // Warm-up; repeat the measured workload 3 times and report the last run.
+                methods[i].build(w[0]);
+                long ns=benchmark(methods[i],w[0],w[1],3);
+                System.out.printf("%s: %.3f ms (last of 3 runs)%n",names[i],ns/1_000_000.0);
+            }
+        }
+        memoryNote();
+
+        StringJoiner joiner=new StringJoiner(" | ");
+        joiner.add("PNR:123456").add("Passenger:Arun").add("Coach:S2").add("Fare:750");
+        System.out.println("\\nStringJoiner: "+joiner);
+        String joined=String.join(" | ","PNR:123456","Passenger:Arun","Coach:S2","Fare:750");
+        System.out.println("String.join: "+joined);
+        System.out.println("String.format: "+String.format("PNR:%s | Passenger:%s | Fare:%d","123456","Arun",750));
+
+        // Shared log: synchronized append through StringBuffer.
+        StringBuffer sharedLog=new StringBuffer();
+        Thread a=new Thread(()->{for(int i=0;i<100;i++) sharedLog.append("A").append(i).append('\n');});
+        Thread b=new Thread(()->{for(int i=0;i<100;i++) sharedLog.append("B").append(i).append('\n');});
+        a.start(); b.start(); a.join(); b.join();
+        System.out.println("Shared log lines: "+sharedLog.toString().split("\\n").length);
+    }
+}
